@@ -44,4 +44,51 @@ func doReduce(
 	//
 	// Your code here (Part I).
 	//
+	
+	var intermediates []KeyValue
+
+	for m:= 0; m<nMap; m++ {
+		fileName := reduceName(jobName, m, reduceTask)
+		openFile, err := os.Open(fileName)
+		if err != nil {
+			panic(err)
+		}
+		decoder := json.NewDecoder(openFile)
+		end := false
+		for end == false {
+			var decoded KeyValue
+			err = decoder.Decode(&decoded)
+			if err != nil {
+				end = true
+			}
+			intermediates = append(intermediates, decoded)
+		}
+
+		openFile.Close()
+	}
+
+
+	sort.Slice(intermediates, func(i, j int) bool {
+		return strings.Compare(intermediates[i].Key, intermediates[j].Key) == -1
+	})
+
+	oFile, err := os.OpenFile(outFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		panic(err)
+	}
+	encoder := json.NewEncoder(oFile)
+	var uniqueKeySlice []string
+	prevKey := intermediates[0].Key
+	var currKey string
+	for _, kv := range intermediates {
+		currKey = kv.Key
+		if strings.Compare(prevKey,currKey) != 0 {
+			encoder.Encode(KeyValue{prevKey, reduceF(prevKey, uniqueKeySlice)})
+			uniqueKeySlice = uniqueKeySlice[:0]
+		}
+		uniqueKeySlice = append(uniqueKeySlice, currKey)
+		prevKey = currKey
+	}
+
+	oFile.Close()
 }
