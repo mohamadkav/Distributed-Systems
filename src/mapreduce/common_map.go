@@ -60,8 +60,8 @@ func doMap(
 
 	stringData := string(data)
 	intermediates := mapF(inFile, stringData)
-	var interFiles [nReduce]*os.File
-	var encoders [nReduce]*json.Encoder
+	interFiles := make([]*os.File, nReduce)
+	encoders := make([]*json.Encoder, nReduce)
 
 	for i := 0; i<nReduce; i++ {
 		fileName := reduceName(jobName, mapTask, i)
