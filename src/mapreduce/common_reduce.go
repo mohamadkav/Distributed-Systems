@@ -14,6 +14,61 @@ func doReduce(
 	nMap int, // the number of map tasks that were run ("M" in the paper)
 	reduceF func(key string, values []string) string,
 ) {
+
+	var intermediates []KeyValue
+
+	for m:= 0; m<nMap; m++ {
+		fileName := reduceName(jobName, m, reduceTask)
+		openFile, err := os.Open(fileName)
+		if err != nil {
+			panic(err)
+		}
+		decoder := json.NewDecoder(openFile)
+		end := false
+		for end == false {
+			var decoded KeyValue
+			err = decoder.Decode(&decoded)
+			if err != nil {
+				end = true
+			}else {
+				intermediates = append(intermediates, decoded)
+			}
+
+		}
+
+		openFile.Close()
+	}
+
+
+	sort.Slice(intermediates, func(i, j int) bool {
+		return strings.Compare(intermediates[i].Key, intermediates[j].Key) == -1
+	})
+
+
+	oFile, err := os.OpenFile(outFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		panic(err)
+	}
+	encoder := json.NewEncoder(oFile)
+	var uniqueKeySlice []string
+	prevKey := intermediates[0].Key
+	var currKey string
+	for _, kv := range intermediates {
+		currKey = kv.Key
+		if strings.Compare(prevKey,currKey) != 0 {
+			reduction := reduceF(prevKey, uniqueKeySlice)
+			encoder.Encode(KeyValue{prevKey, reduction})
+			uniqueKeySlice = uniqueKeySlice[:0]
+		}
+		
+		uniqueKeySlice = append(uniqueKeySlice, currKey)
+		prevKey = currKey
+	}
+
+	encoder.Encode(KeyValue{prevKey, reduceF(prevKey, uniqueKeySlice)})
+	oFile.Close()
+
+
 	//
 	// doReduce manages one reduce task: it should read the intermediate
 	// files for the task, sort the intermediate key/value pairs by key,
@@ -51,51 +106,4 @@ func doReduce(
 	//
 	// Your code here (Part I).
 	//
-	
-	var intermediates []KeyValue
-
-	for m:= 0; m<nMap; m++ {
-		fileName := reduceName(jobName, m, reduceTask)
-		openFile, err := os.Open(fileName)
-		if err != nil {
-			panic(err)
-		}
-		decoder := json.NewDecoder(openFile)
-		end := false
-		for end == false {
-			var decoded KeyValue
-			err = decoder.Decode(&decoded)
-			if err != nil {
-				end = true
-			}
-			intermediates = append(intermediates, decoded)
-		}
-
-		openFile.Close()
-	}
-
-
-	sort.Slice(intermediates, func(i, j int) bool {
-		return strings.Compare(intermediates[i].Key, intermediates[j].Key) == -1
-	})
-
-	oFile, err := os.OpenFile(outFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		panic(err)
-	}
-	encoder := json.NewEncoder(oFile)
-	var uniqueKeySlice []string
-	prevKey := intermediates[0].Key
-	var currKey string
-	for _, kv := range intermediates {
-		currKey = kv.Key
-		if strings.Compare(prevKey,currKey) != 0 {
-			encoder.Encode(KeyValue{prevKey, reduceF(prevKey, uniqueKeySlice)})
-			uniqueKeySlice = uniqueKeySlice[:0]
-		}
-		uniqueKeySlice = append(uniqueKeySlice, currKey)
-		prevKey = currKey
-	}
-
-	oFile.Close()
 }

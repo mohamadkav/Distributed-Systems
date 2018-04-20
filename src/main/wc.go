@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"mapreduce"
 	"os"
+	"bufio"
+	"strings"
 )
 
 //
@@ -14,7 +16,23 @@ import (
 // of key/value pairs.
 //
 func mapF(filename string, contents string) []mapreduce.KeyValue {
-	// Your code here (Part 1B).
+	var hash []mapreduce.KeyValue
+	file, err := os.Open(filename)
+	if err != nil {
+		panic(err)
+	}
+
+	reader := bufio.NewScanner(file)
+	reader.Split(bufio.ScanWords)
+
+	for reader.Scan() {
+		kv := mapreduce.KeyValue{strings.ToLower(reader.Text()), ""}
+		hash = append(hash, kv)
+	}
+
+	file.Close()
+
+	return hash
 }
 
 //
@@ -23,7 +41,7 @@ func mapF(filename string, contents string) []mapreduce.KeyValue {
 // any map task.
 //
 func reduceF(key string, values []string) string {
-	// Your code here (Part 1B).
+	return fmt.Sprintf("%d", len(values))
 }
 
 // Can be run in 3 ways:
