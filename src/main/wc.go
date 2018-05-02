@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"mapreduce"
 	"os"
-	"bufio"
 	"strings"
+	"unicode"
 )
 
 //
@@ -17,20 +17,35 @@ import (
 //
 func mapF(filename string, contents string) []mapreduce.KeyValue {
 	var hash []mapreduce.KeyValue
-	file, err := os.Open(filename)
-	if err != nil {
-		panic(err)
-	}
+	/**
+	 * Date: 2018-5-2
+	 * Kaiyu: Based on the sentences above, we should not use filename.
+	 */
 
-	reader := bufio.NewScanner(file)
-	reader.Split(bufio.ScanWords)
+	//file, err := os.Open(filename)
+	//if err != nil {
+	//	panic(err)
+	//}
+	//
+	//reader := bufio.NewScanner(file)
+	//reader.Split(bufio.ScanWords)
+	//
+	//for reader.Scan() {
+	//	kv := mapreduce.KeyValue{strings.ToLower(reader.Text()), ""}
+	//	hash = append(hash, kv)
+	//}
+	//
+	//file.Close()
+	temp_strings := strings.FieldsFunc(
+		contents,
+		func(ch rune) bool {
+			return !unicode.IsLetter(ch)
+		})
 
-	for reader.Scan() {
-		kv := mapreduce.KeyValue{strings.ToLower(reader.Text()), ""}
+	for _, string := range temp_strings{
+		kv := mapreduce.KeyValue{strings.ToLower(string), "" }
 		hash = append(hash, kv)
 	}
-
-	file.Close()
 
 	return hash
 }
