@@ -39,7 +39,7 @@ func schedule(jobName string, mapFiles []string, nReduce int, phase jobPhase, re
 			for true {
 				current_worker := <- registerChan
 
-				args := &DoTaskArgs{
+				args := DoTaskArgs{
 					JobName: jobName,
 					File: mapFiles[task],
 					Phase: phase,
@@ -48,7 +48,7 @@ func schedule(jobName string, mapFiles []string, nReduce int, phase jobPhase, re
 				}
 
 				if call(current_worker, "Worker.DoTask", args, new(struct{})){
-					wait_group.Done()
+					wait_group.Done()  // Done() = Add(-1)
 					registerChan <- current_worker
 					break;
 				}
