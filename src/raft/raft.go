@@ -47,7 +47,6 @@ type ApplyMsg struct {
 const leader = 0
 const candidate = 1
 const follower = 2
-type Stat string
 //
 // A Go object implementing a single Raft peer.
 //
