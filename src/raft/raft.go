@@ -64,7 +64,7 @@ type Raft struct {
 	id               int
 
 	state            Stat
-	isDecommissioned bool
+	ended bool
 
 	currentTerm int
 	//Which candidate did u vote for?
@@ -72,7 +72,7 @@ type Raft struct {
 	leaderID    int
 	//Leader heartbeat
 	lastHeartBeat time.Time
-	lastEntrySent time.Time
+	lastSendTime time.Time
 
 }
 
@@ -127,7 +127,7 @@ func (rf *Raft) readPersist(data []byte) {
 //
 type RequestVoteArgs struct {
 	Term        int
-	CandidateId int
+	Candidate int
 }
 
 //
@@ -136,7 +136,7 @@ type RequestVoteArgs struct {
 //
 type RequestVoteReply struct {
 	Term        int
-	VoteGranted bool
+	Voted bool
 }
 
 //
@@ -147,17 +147,17 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	defer rf.mu.Unlock()
 
 	if args.Term < rf.currentTerm {
-		reply.VoteGranted = false
+		reply.Voted = false
 	} else{
-		rf.votedFor = args.CandidateId
-		reply.VoteGranted = true
+		rf.votedFor = args.Candidate
+		reply.Voted = true
 
 	}
 	if args.Term > rf.currentTerm {
 		rf.state = Follower
 		rf.currentTerm = args.Term
 	}
-	/*else if rf.votedFor == 0 || args.CandidateId == rf.votedFor {
+	/*else if rf.votedFor == 0 || args.Candidate == rf.votedFor {
 	}*/
 	reply.Term = rf.currentTerm
 
@@ -306,10 +306,10 @@ func (rf *Raft) startElectionTimer() {
 
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
-
-	if rf.state != Leader && currentTime.Sub(rf.lastHeartBeat) >= currentTimeout {
+	interval  := currentTime.Sub(rf.lastHeartBeat)
+	if  interval>= currentTimeout && rf.state != Leader {
 		go rf.startElection()
-	} else if !rf.isDecommissioned {
+	} else if !rf.ended {
 		go rf.startElectionTimer()
 	}
 }
@@ -322,21 +322,20 @@ func (rf *Raft) startElection() {
 
 	go rf.startElectionTimer()
 
-	args := RequestVoteArgs{}
-	args.Term=rf.currentTerm
-	args.CandidateId=rf.id
 	replies := make([]RequestVoteReply, len(rf.peers))
 	voteChannel := make(chan int, len(replies))
+	args := RequestVoteArgs{}
+	args.Term=rf.currentTerm
+	args.Candidate=rf.id
 	for i := range rf.peers {
 		go rf.sendRequestVote(i,voteChannel, &args, &replies[i])
 	}
 	rf.mu.Unlock()
 
-	// Count votes
-	votes := 1
+	votes := 1 //One for itself
 	gotMajority := false
 	for i := 0; i < len(replies); i++ {
-		if replies[<- voteChannel].VoteGranted {
+		if replies[<- voteChannel].Voted {
 			votes++
 		}
 		if votes > len(replies)/2 {
@@ -360,19 +359,19 @@ func (rf *Raft) setLeader() {
 	rf.state = Leader
 	rf.leaderID = rf.id
 	rf.sendHeartbeats()
-	go rf.startLeaderProcess()
+	go rf.lead()
 }
 
-func (rf *Raft) startLeaderProcess() {
+func (rf *Raft) lead() {
 	for {
 		currentTime := <-time.After(HeartBeatInterval)
 
 		rf.mu.Lock()
 		rf.mu.Unlock()
 		_,isLeader := rf.GetState()
-		if !isLeader || rf.isDecommissioned {
+		if !isLeader || rf.ended {
 			break
-		} else if rf.state == Leader && currentTime.Sub(rf.lastEntrySent) >= HeartBeatInterval { //Send heartbeats
+		} else if rf.state == Leader && currentTime.Sub(rf.lastSendTime) >= HeartBeatInterval { //Send heartbeats
 			rf.mu.Lock()
 			rf.sendHeartbeats()
 			rf.mu.Unlock()
@@ -388,6 +387,6 @@ func (rf *Raft) sendHeartbeats() {
 	for i := range rf.peers {
 		go rf.sendAppendEntries(i, &args, &replies[i])
 	}
-	rf.lastEntrySent = time.Now()
+	rf.lastSendTime = time.Now()
 }
 
