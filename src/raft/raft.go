@@ -70,6 +70,9 @@ type AppendEntriesInput struct {
 type AppendEntriesReply struct {
 	Term    		int
 	Success 		bool
+
+	// can not handle race
+	NextIndex		int
 }
 
 type RequestVoteArgs struct {
@@ -122,6 +125,9 @@ type Raft struct {
 }
 
 func (rf *Raft) GetState() (int, bool) {
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+
 	return rf.currentTerm, rf.state == leader
 }
 
@@ -185,7 +191,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 
 	if args.Term > rf.currentTerm{
 		rf.setToFollower(args.Term)
-		rf.votedFor = args.CandidateId
+		//rf.votedFor = args.CandidateId
 		reply.VoteGranted = true
 	} else if args.Term == rf.currentTerm {
 		if rf.votedFor == -1 {
@@ -289,6 +295,10 @@ func (rf *Raft) AppendEntries(args *AppendEntriesInput, reply *AppendEntriesRepl
 		return
 	}
 
+	if reply.Success {
+		reply.NextIndex = args.PrevLogIndex + 1 + len(args.Entries)
+	}
+
 	ansIndex := -1
 
 	if args.PrevLogIndex + len(args.Entries) <= rf.log[len(rf.log) - 1].Index {
@@ -315,8 +325,10 @@ func (rf *Raft) AppendEntries(args *AppendEntriesInput, reply *AppendEntriesRepl
 	}
 }
 
+
+
 func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesInput, reply *AppendEntriesReply) bool {
-	if rf.me!=server{
+	if rf.me != server{
 		return rf.peers[server].Call("Raft.AppendEntries", args, reply)
 	}
 	return true
@@ -337,13 +349,14 @@ func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesInput, reply *A
 // the leader.
 //
 func (rf *Raft) Start(command interface{}) (int, int, bool) {
-	rf.mu.Lock()
-	defer rf.mu.Unlock()
+
 
 	term, isLeader := rf.GetState()
 	index := -1
 
 	// Your code here (3B).
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
 
 	if isLeader {
 		index = len(rf.log)
@@ -441,7 +454,8 @@ func (rf *Raft) startElectionTimer() {
 				//fmt.Printf("Reset timer %v\n", rf.me)
 
 			case <- electionTimer.C:
-				if rf.state == leader {
+				_, isLeader := rf.GetState()
+				if isLeader {
 					electionTimer.Reset(getElectionTimeout())
 				} else {
 					fmt.Printf("People %v timeout, start Election\n", rf.me)
@@ -529,6 +543,8 @@ func (rf *Raft) setToCandidate() {
 }
 
 func (rf *Raft) setToFollower(newTerm int){
+
+
 	rf.state = follower
 	rf.currentTerm = newTerm
 	rf.votedFor = -1
@@ -565,6 +581,7 @@ func (rf *Raft) sendHeartbeat(i int, reply *AppendEntriesReply) bool {
 
 
 	rf.mu.Lock()
+	//defer rf.mu.Unlock()
 	fmt.Printf("i %d, rf.nextIndex[i] %v, len(rf.log) %v, %v\n", i, (rf.nextIndex[i]), len(rf.log), rf.log)
 	//fmt.Println(rf.log)
 	args := AppendEntriesInput{
@@ -576,9 +593,16 @@ func (rf *Raft) sendHeartbeat(i int, reply *AppendEntriesReply) bool {
 		LeaderCommit:	rf.commitIndex,
 	}
 
+	//if args.PrevLogIndex > len(rf.log) - 1 {
+	//	rf.mu.Unlock()
+	//	return false
+	//} else {
+	//	args.PrevLogTerm = rf.log[args.PrevLogIndex].Term
+	//}
+
 	if rf.log[len(rf.log) -1].Index >= rf.nextIndex[i] {
 		args.Entries = rf.log[rf.nextIndex[i]:]
-		//fmt.Printf("Sent to: %v, args.entries size: %v\n", i, len(args.Entries))
+		fmt.Printf("Sent to: %v, args.entries size: %v\n", i, len(args.Entries))
 	}
 	rf.mu.Unlock()
 
@@ -588,11 +612,13 @@ func (rf *Raft) sendHeartbeat(i int, reply *AppendEntriesReply) bool {
 		defer rf.mu.Unlock()
 
 		if reply.Success {
-			//if (len(args.Entries) > 0) {
-			//	fmt.Printf("set to %v: +=len args.entries\n", i)
-			//}
+			if len(args.Entries) > 0 {
+				fmt.Printf("set to %v: +=len args.entries: %v, rf.nextIndex is: %v\n", i, len(args.Entries), rf.nextIndex[i])
+			}
 
-			rf.nextIndex[i] += len(args.Entries)
+			rf.nextIndex[i] = reply.NextIndex
+			//rf.nextIndex[i] += len(args.Entries)
+
 			rf.matchIndex[i] = rf.nextIndex[i] - 1
 		} else {
 			if rf.state != leader {
@@ -601,7 +627,9 @@ func (rf *Raft) sendHeartbeat(i int, reply *AppendEntriesReply) bool {
 				rf.setToFollower(reply.Term)
 				return true
 			} else {
-				rf.nextIndex[i] --
+				if rf.nextIndex[i] >= 0 {
+					rf.nextIndex[i] --
+				}
 				fmt.Println("Retry")
 				return false
 			}
@@ -623,6 +651,7 @@ func (rf *Raft) sendHeartbeats() {
 		go func(sendTo int) {
 			for {
 				if rf.sendHeartbeat(sendTo, &replies[sendTo]) {
+					//time.After(heartbeatDuration)
 					break
 				}
 			}
