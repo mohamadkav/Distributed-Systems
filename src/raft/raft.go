@@ -137,14 +137,13 @@ func (rf *Raft) GetState() (int, bool) {
 // see paper's Figure 2 for a description of what should be persistent.
 //
 func (rf *Raft) persist() {
-	// Your code here (3C).
-	// Example:
-	// w := new(bytes.Buffer)
-	// e := labgob.NewEncoder(w)
-	// e.Encode(rf.xxx)
-	// e.Encode(rf.yyy)
-	// data := w.Bytes()
-	// rf.persister.SaveRaftState(data)
+	w := new(bytes.Buffer)
+	e := labgob.NewEncoder(w)
+	e.Encode(rf.currentTerm)
+	e.Encode(rf.votedFor)
+	e.Encode(rf.log)
+	data := w.Bytes()
+	rf.persister.SaveRaftState(data)
 }
 
 //
@@ -154,19 +153,31 @@ func (rf *Raft) readPersist(data []byte) {
 	if data == nil || len(data) < 1 { // bootstrap without any state?
 		return
 	}
-	// Your code here (3C).
-	// Example:
-	// r := bytes.NewBuffer(data)
-	// d := labgob.NewDecoder(r)
-	// var xxx
-	// var yyy
-	// if d.Decode(&xxx) != nil ||
-	//    d.Decode(&yyy) != nil {
-	//   error...
-	// } else {
-	//   rf.xxx = xxx
-	//   rf.yyy = yyy
-	// }
+	r := bytes.NewBuffer(data)
+	d := labgob.NewDecoder(r)
+	var cT int
+	var vF int
+	var lG []LogEntry
+	err1 := d.Decode(&cT)
+	err2 := d.Decode(&vF)
+	err3 := d.Decode(&lG)
+	if err1 != nil {
+		panic(err1)
+	}else{
+		rf.currentTerm = cT
+	}
+
+	if err2 != nil{
+		panic(err2)
+	}else{
+		rf.votedFor = vF
+	}
+
+	if err3 != nil{
+		panic(err3)
+	}else{
+		rf.log = lG
+	}
 }
 
 //
@@ -202,6 +213,8 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 			reply.Term = rf.currentTerm
 		}
 	}
+	
+	rf.persist()
 
 	//Part B, For lastLogTerm
 	if (rf.log[len(rf.log) -1].Term == args.LastLogTerm) && (len(rf.log) -1 > args.LastLogIndex) {
@@ -315,6 +328,8 @@ func (rf *Raft) AppendEntries(args *AppendEntriesInput, reply *AppendEntriesRepl
 	if ansIndex != -1 {
 		rf.log = append(rf.log[:args.PrevLogIndex + 1], args.Entries...)
 	}
+	
+	rf.persist()
 
 	if args.LeaderCommit > rf.commitIndex {
 		if args.LeaderCommit < rf.log[len(rf.log) - 1].Index {
@@ -368,6 +383,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 		})
 	}
 
+	rf.persist()
 	return index, term, isLeader
 }
 
@@ -540,6 +556,7 @@ func (rf *Raft) setToCandidate() {
 	rf.state = candidate
 	rf.currentTerm++
 	rf.votedFor = rf.me //itself
+	rf.persist()
 }
 
 func (rf *Raft) setToFollower(newTerm int){
@@ -548,6 +565,7 @@ func (rf *Raft) setToFollower(newTerm int){
 	rf.state = follower
 	rf.currentTerm = newTerm
 	rf.votedFor = -1
+	rf.persist()
 }
 
 func (rf *Raft) setToLeader() {
