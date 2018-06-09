@@ -307,7 +307,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesInput, reply *AppendEntriesRepl
 	currentTerm := rf.getCurrentTerm()
 
 
-	if args.Term > currentTerm {
+	if args.Term >= currentTerm {
 		rf.setToFollower(args.Term)
 
 		rf.mu.Lock()
@@ -316,8 +316,8 @@ func (rf *Raft) AppendEntries(args *AppendEntriesInput, reply *AppendEntriesRepl
 		rf.mu.Unlock()
 
 		reply.Success = true
-	} else if args.Term == currentTerm{
-		reply.Success = true
+	//} else if args.Term == currentTerm{
+	//	reply.Success = true
 	} else {
 		reply.Success = false
 		reply.Term = currentTerm
