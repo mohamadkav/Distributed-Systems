@@ -670,6 +670,8 @@ func (rf *Raft) setToLeader() {
 }
 
 func (rf *Raft) lead() {
+	rf.sendHeartbeats()
+
 	for {
 		currentTime := <-time.After(heartbeatDuration * time.Millisecond) //100 ms
 
