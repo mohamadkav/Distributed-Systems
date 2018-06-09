@@ -301,32 +301,22 @@ func (rf *Raft) AppendEntries(args *AppendEntriesInput, reply *AppendEntriesRepl
 
 	//fmt.Printf("%d append entries to %d\n", args.LeaderID, rf.me)
 
-
-	go func() {rf.chTimer <- struct{}{}}()
-
 	currentTerm := rf.getCurrentTerm()
+	reply.Term = currentTerm
 
-
-	if args.Term >= currentTerm {
-		rf.setToFollower(args.Term)
-
-		rf.mu.Lock()
-		rf.leaderID = args.LeaderID
-		rf.lastHeartbeat = time.Now()
-		rf.mu.Unlock()
-
-		reply.Success = true
-	//} else if args.Term == currentTerm{
-	//	reply.Success = true
-	} else {
+	if args.Term < currentTerm {
 		reply.Success = false
-		reply.Term = currentTerm
 		return
 	}
 
-	//Part B, for Log
+	go func() {rf.chTimer <- struct{}{}}()
+	rf.setToFollower(args.Term)
+
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
+
+	rf.leaderID = args.LeaderID
+	rf.lastHeartbeat = time.Now()
 
 	if args.PrevLogIndex > rf.log[len(rf.log) -1].Index {
 		reply.Success = false
@@ -338,10 +328,8 @@ func (rf *Raft) AppendEntries(args *AppendEntriesInput, reply *AppendEntriesRepl
 		return
 	}
 
-	if reply.Success {
-		reply.NextIndex = args.PrevLogIndex + 1 + len(args.Entries)
-	}
-
+	reply.Success = true
+	reply.NextIndex = args.PrevLogIndex + 1 + len(args.Entries)
 	ansIndex := -1
 
 	if args.PrevLogIndex + len(args.Entries) <= rf.log[len(rf.log) - 1].Index {
