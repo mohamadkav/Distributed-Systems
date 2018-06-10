@@ -1,3 +1,12 @@
-olc795
-mkr1712
-khh8084
+- olc795
+- mkr1712
+- khh8084
+
+- Part B:
+> we can pass all the tests in Part B
+
+- Part C:
+> We can pass all the tests excpet "TestFigure83C"
+
+- Race:
+> We solved every race condition we found by "-race"
