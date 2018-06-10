@@ -206,6 +206,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	if args.Term < currentTerm {
 		reply.VoteGranted = false
 		reply.Term = currentTerm
+		go rf.persist()
 		return
 	}
 
@@ -226,7 +227,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 			reply.Term = currentTerm
 		}
 	}
-	
+
 	go rf.persist()
 
 	//Part B, For lastLogTerm
@@ -306,6 +307,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesInput, reply *AppendEntriesRepl
 
 	if args.Term < currentTerm {
 		reply.Success = false
+		go rf.persist()
 		return
 	}
 
@@ -346,7 +348,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesInput, reply *AppendEntriesRepl
 	if ansIndex != -1 {
 		rf.log = append(rf.log[:args.PrevLogIndex + 1], args.Entries...)
 	}
-	
+
 	go rf.persist()
 
 	if args.LeaderCommit > rf.commitIndex {
@@ -499,21 +501,21 @@ func (rf *Raft) startElectionTimer() {
 
 	for {
 		select {
-			case <- rf.chTimer:
+		case <- rf.chTimer:
+			electionTimer.Reset(getElectionTimeout())
+			//fmt.Printf("Reset timer %v\n", rf.me)
+
+		case <- electionTimer.C:
+			_, isLeader := rf.GetState()
+			if isLeader {
 				electionTimer.Reset(getElectionTimeout())
-				//fmt.Printf("Reset timer %v\n", rf.me)
+			} else {
+				fmt.Printf("People %v timeout, start Election, time %v\n", rf.me, time.Now())
 
-			case <- electionTimer.C:
-				_, isLeader := rf.GetState()
-				if isLeader {
-					electionTimer.Reset(getElectionTimeout())
-				} else {
-					fmt.Printf("People %v timeout, start Election, time %v\n", rf.me, time.Now())
-
-					electionTimer.Reset(getElectionTimeout())
-					go rf.startElection()
-				}
+				electionTimer.Reset(getElectionTimeout())
+				go rf.startElection()
 			}
+		}
 	}
 
 	//rf.mu.Lock()
@@ -654,6 +656,7 @@ func (rf *Raft) setToLeader() {
 		rf.matchIndex[i] = 0
 	}
 
+	go rf.persist()
 	go rf.lead()
 }
 
@@ -697,9 +700,9 @@ func (rf *Raft) sendHeartbeat(i int, reply *AppendEntriesReply) bool {
 	}
 	rf.mu.Unlock()
 
-  	//fmt.Printf("I am %v, send heartbeat to %v\n", rf.me, i)
+	//fmt.Printf("I am %v, send heartbeat to %v\n", rf.me, i)
 
-  	_, isLeader := rf.GetState()
+	_, isLeader := rf.GetState()
 
 	if isLeader && rf.sendAppendEntries(i, &args, reply) {
 
